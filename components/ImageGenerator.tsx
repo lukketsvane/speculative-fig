@@ -1,15 +1,18 @@
 'use client';
 
 import { useState, useCallback } from 'react';
+import Link from 'next/link';
 import { ImageUploader } from './ImageUploader';
 import { Spinner } from './Spinner';
 import { GeneratedImage } from './GeneratedImage';
+import { Images, Type } from 'lucide-react';
 
 export default function ImageGenerator() {
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [includeText, setIncludeText] = useState<boolean>(false);
 
   const handleImageUpload = useCallback(async (file: File) => {
     if (!file.type.startsWith('image/')) {
@@ -27,7 +30,6 @@ export default function ImageGenerator() {
       setUploadedImage(dataUrl);
       
       try {
-        // Convert file to base64
         const base64Data = dataUrl.split(',')[1];
         
         const response = await fetch('/api/generate', {
@@ -35,7 +37,8 @@ export default function ImageGenerator() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
             imageData: base64Data,
-            mimeType: file.type
+            mimeType: file.type,
+            includeText
           }),
         });
 
@@ -57,7 +60,7 @@ export default function ImageGenerator() {
       }
     };
     reader.readAsDataURL(file);
-  }, []);
+  }, [includeText]);
 
   const handleReset = useCallback(() => {
     setUploadedImage(null);
@@ -69,9 +72,29 @@ export default function ImageGenerator() {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-4 sm:p-6 lg:p-8">
       <header className="text-center mb-8">
-        <h1 className="text-3xl sm:text-4xl font-bold text-gray-700">
-          speculative drawing
-        </h1>
+        <div className="flex items-center justify-center gap-4 mb-4">
+          <h1 className="text-3xl sm:text-4xl font-bold text-gray-700">
+            speculative drawing
+          </h1>
+          <button
+            onClick={() => setIncludeText(!includeText)}
+            className={`p-2 rounded-lg transition-colors ${
+              includeText 
+                ? 'bg-gray-800 text-white' 
+                : 'hover:bg-gray-100 text-gray-600'
+            }`}
+            title={includeText ? 'Disable text captions' : 'Enable text captions'}
+          >
+            <Type className="w-6 h-6" />
+          </button>
+          <Link 
+            href="/gallery" 
+            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            title="View gallery"
+          >
+            <Images className="w-6 h-6 text-gray-600" />
+          </Link>
+        </div>
       </header>
 
       <main className="w-full max-w-2xl">

@@ -6,41 +6,15 @@ const REFERENCE_IMAGES = [
   'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/speculative-drawing_14-w4neAJG3jlW7h6bqR11YC93rUEHVhp.jpg',
 ];
 
-const STYLE_GUIDE = `You MUST create artwork in this EXACT style:
+const STYLE_FOUNDATION = `Pure minimalist line drawing illustration in the style of speculative philosophy diagrams. Single continuous black contour lines only, consistent medium line weight throughout. Absolute white background with no texture, grain, or shading. NO cross-hatching, NO fill, NO gradients, NO shadows. Clean vector-like quality with subtle organic hand-drawn imperfections. Centered composition with generous negative space. Philosophical and metaphorical visualization style similar to Graham Harman's object-oriented ontology illustrations and Dunne & Raby speculative design drawings.`;
 
-VISUAL STYLE (CRITICAL):
-- Pure black continuous lines on white background - NO shading, NO fills, NO gray tones
-- Hand-drawn aesthetic with slightly wobbly, organic lines (not computer-perfect)
-- Minimalist line art using single continuous strokes where possible
-- Surreal, abstracted human figures with distorted proportions and impossible geometries
-- Layered/repeated line motifs creating motion or philosophical depth
-- Clean white background with high contrast black lines
+const TECHNICAL_SPECS = `Technical execution: Pure black (#000000) ink lines on pure white (#FFFFFF) background. No pencil marks, no eraser marks, no construction lines visible. Lines should flow smoothly like a single pen stroke. Minimal detail, maximum conceptual clarity. Objects and figures should have organic, slightly irregular edges (not perfect geometric shapes).`;
 
-CONCEPTUAL APPROACH:
-- Philosophical commentary on technology, algorithms, time, and human consciousness
-- Transform literal subjects into speculative, metaphorical interpretations
-- Satirical/critical perspective on digital life and modern existence
-- Surreal visual metaphors (e.g., elongated limbs, multiplied forms, merged bodies)
-
-COMPOSITION:
-- Simple, centered compositions with lots of white space
-- Include handwritten lowercase text caption that provides ironic/philosophical commentary
-- Text should be integrated naturally, appearing hand-lettered in a casual style
-- Caption format: brief phrase about technology, time, or speculative futures
-
-FORBIDDEN:
-- NO photorealistic details
-- NO shading or gradients
-- NO fills or solid black areas (except small accents)
-- NO color
-- NO typed/digital fonts
-
-Think: "What would this look like as a New Yorker-style philosophical cartoon about technology and time?"`;
+const NEGATIVE_PROMPT = `FORBIDDEN ELEMENTS (DO NOT INCLUDE): color, shading, gradient, fill, texture, sketchy lines, multiple line weights, gray tones, pencil sketch, rough draft, background elements, photo-realistic, 3D rendering, hatching, cross-hatching, stippling, watercolor, painting, colored pencil, chalk, pastel, detailed rendering, realistic textures, shadows, highlights, depth, perspective lines, construction lines, multiple objects, cluttered composition, busy background, illustration style, cartoon, manga, comic book`;
 
 export async function POST(request: Request) {
   try {
-    const { imageData, mimeType } = await request.json();
-    console.log('[v0] Received request with mimeType:', mimeType);
+    const { imageData, mimeType, includeText = false } = await request.json();
 
     if (!process.env.GEMINI_API_KEY) {
       return NextResponse.json(
@@ -49,7 +23,6 @@ export async function POST(request: Request) {
       );
     }
 
-    console.log('[v0] Starting image analysis with gemini-flash-latest');
     const analyzeResponse = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${process.env.GEMINI_API_KEY}`,
       {
@@ -62,7 +35,18 @@ export async function POST(request: Request) {
             {
               parts: [
                 {
-                  text: 'Describe the KEY SUBJECT and MOOD of this image in 2-3 sentences. Focus on what could be transformed into a philosophical metaphor about technology, time, or human existence. Be conceptual, not literal.',
+                  text: `Analyze this image and extract a PHILOSOPHICAL METAPHOR concept for a speculative drawing.
+
+Format your response as:
+[entity/figure] + [action/transformation] + [metaphorical element related to technology/time/consciousness]
+
+Examples:
+- "person dissolving into scattered coins" (commodification)
+- "figure emerging from tangled wires" (digital entanglement)
+- "body fragmenting into repeated layers" (time-complex identity)
+
+Focus on: transformation, technology critique, temporal concepts, or human-machine relationships.
+Keep it to ONE clear metaphor in 1-2 sentences.`,
                 },
                 {
                   inline_data: {
@@ -87,38 +71,49 @@ export async function POST(request: Request) {
     }
 
     const analyzeData = await analyzeResponse.json();
-    
-    const description = analyzeData.candidates?.[0]?.content?.parts?.[0]?.text;
+    const conceptMetaphor = analyzeData.candidates?.[0]?.content?.parts?.[0]?.text;
 
-    if (!description) {
-      console.error('[v0] No description in response');
+    if (!conceptMetaphor) {
       return NextResponse.json(
-        { error: 'Failed to get image description' },
+        { error: 'Failed to extract concept' },
         { status: 500 }
       );
     }
 
-    console.log('[v0] Image concept:', description);
+    const captionInstructions = includeText 
+      ? `- Include handwritten lowercase caption at bottom
+- Caption should provide ironic philosophical commentary on technology/time
 
-    const imagePrompt = `${STYLE_GUIDE}
+CAPTION STYLE EXAMPLES:
+"problems getting used to living in a speculative time"
+"the preemptive personality is one step ahead"  
+"we are now post-everything (in the age of wire)"
+"there is no outside"
 
-REFERENCE STYLE: Study these exact reference images to match the style perfectly:
-${REFERENCE_IMAGES.map((url, i) => `Reference ${i + 1}: ${url}`).join('\n')}
+Create a caption that relates to: ${conceptMetaphor}`
+      : `- DO NOT include any text, captions, or writing
+- Pure visual illustration only`;
 
-SOURCE CONCEPT: ${description}
+    const imagePrompt = `${STYLE_FOUNDATION}
 
-YOUR TASK:
-Transform the above concept into a speculative line drawing that looks EXACTLY like the reference images. The uploaded image is your composition reference - use its subject and mood, but render it as a philosophical, surreal line drawing with a critical commentary caption about technology or time.
+${TECHNICAL_SPECS}
 
-Example caption styles:
-- "problems getting used to living in a speculative time"
-- "the preemptive personality is one step ahead"
-- "we are now post-everything (in the age of wire)"
-- "there is no outside"
+STYLE REFERENCES (Match these EXACTLY):
+${REFERENCE_IMAGES.map((url, i) => `- Reference ${i + 1}: ${url}`).join('\n')}
 
-Create a thought-provoking visual metaphor with handwritten text.`;
+SUBJECT METAPHOR:
+${conceptMetaphor}
 
-    console.log('[v0] Starting image generation with gemini-2.5-flash-image');
+COMPOSITION GUIDANCE:
+- Center the metaphorical subject in the middle third
+- Minimum 40% white space around subject
+- Single focal point with flowing transformation lines
+${captionInstructions}
+
+${NEGATIVE_PROMPT}`;
+
+    console.log('[v0] Generating with concept:', conceptMetaphor);
+    console.log('[v0] Include text:', includeText);
     
     const generateResponse = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${process.env.GEMINI_API_KEY}`,
@@ -165,16 +160,13 @@ Create a thought-provoking visual metaphor with handwritten text.`;
     const imageDataGenerated = imagePart?.inlineData?.data || imagePart?.inline_data?.data;
 
     if (imageDataGenerated) {
-      console.log('[v0] Successfully generated image');
-      
       if (!process.env.IMGBB_API_KEY) {
-        console.error('[v0] IMGBB_API_KEY not set, returning base64');
+        console.error('[v0] IMGBB_API_KEY not set, returning base64 only');
         return NextResponse.json({ 
           imageData: imageDataGenerated 
         });
       }
 
-      console.log('[v0] Uploading image to ImgBB');
       const formData = new URLSearchParams();
       formData.append('key', process.env.IMGBB_API_KEY);
       formData.append('image', imageDataGenerated);
@@ -185,29 +177,40 @@ Create a thought-provoking visual metaphor with handwritten text.`;
       });
 
       if (!imgbbResponse.ok) {
-        const errorText = await imgbbResponse.text();
-        console.error('[v0] ImgBB upload error:', errorText);
+        console.error('[v0] ImgBB upload failed, returning base64');
         return NextResponse.json({ 
           imageData: imageDataGenerated 
         });
       }
 
       const imgbbData = await imgbbResponse.json();
-      console.log('[v0] ImgBB upload success:', imgbbData.data?.url);
+      const imageUrl = imgbbData.data?.display_url || imgbbData.data?.url;
+
+      // Save to gallery
+      try {
+        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 
+                       (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000');
+        await fetch(`${baseUrl}/api/gallery`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: imageUrl }),
+        });
+      } catch (error) {
+        console.error('[v0] Gallery save failed:', error);
+      }
 
       return NextResponse.json({ 
-        imageUrl: imgbbData.data?.display_url || imgbbData.data?.url,
+        imageUrl,
         imageData: imageDataGenerated
       });
     }
 
-    console.error('[v0] No image data found in response');
     return NextResponse.json(
-      { error: 'No image was generated by the API' },
+      { error: 'No image data in response' },
       { status: 500 }
     );
   } catch (error) {
-    console.error('[v0] Error generating image:', error);
+    console.error('[v0] Generation error:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
