@@ -1,0 +1,5 @@
+{
+  "name": "speculative-drawing",
+  "description": "An AI-powered application that transforms your photos into speculative, conceptual black and white line drawings using the Gemini 2.5 Flash Image model.",
+  "requestFramePermissions": []
+}

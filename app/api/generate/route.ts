@@ -1,0 +1,146 @@
+import { NextResponse } from 'next/server';
+
+const SPECULATIVE_PROMPT = `Create a speculative black and white line drawing based on this concept: {description}. The style should be minimal, conceptual, and thought-provoking. Emphasize abstract forms and ideas inspired by the concept, rather than literal depiction. The output should be a clean line drawing on a white background with high contrast. Artistic, sketch-like, minimalist black and white line art.`;
+
+export async function POST(request: Request) {
+  try {
+    const { imageData, mimeType } = await request.json();
+    console.log('[v0] Received request with mimeType:', mimeType);
+
+    if (!process.env.GEMINI_API_KEY) {
+      return NextResponse.json(
+        { error: 'GEMINI_API_KEY environment variable not set' },
+        { status: 500 }
+      );
+    }
+
+    console.log('[v0] Starting image analysis with gemini-flash-latest');
+    const analyzeResponse = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${process.env.GEMINI_API_KEY}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                {
+                  text: 'Describe this image in detail, focusing on the key subjects, composition, mood, and visual elements. Be concise but comprehensive.',
+                },
+                {
+                  inline_data: {
+                    mime_type: mimeType,
+                    data: imageData,
+                  },
+                },
+              ],
+            },
+          ],
+        }),
+      }
+    );
+
+    if (!analyzeResponse.ok) {
+      const errorText = await analyzeResponse.text();
+      console.error('[v0] Gemini analysis error:', errorText);
+      return NextResponse.json(
+        { error: 'Failed to analyze image' },
+        { status: analyzeResponse.status }
+      );
+    }
+
+    const analyzeData = await analyzeResponse.json();
+    console.log('[v0] Analysis response:', JSON.stringify(analyzeData, null, 2));
+    
+    const description = analyzeData.candidates?.[0]?.content?.parts?.[0]?.text;
+
+    if (!description) {
+      console.error('[v0] No description in response');
+      return NextResponse.json(
+        { error: 'Failed to get image description' },
+        { status: 500 }
+      );
+    }
+
+    console.log('[v0] Image description:', description);
+    const imagePrompt = `Create a minimalist black and white line drawing based on this concept: ${description}
+
+The style must strictly adhere to these characteristics:
+- Simple continuous or near-continuous black lines on white background
+- Sketch-like, hand-drawn quality with slight imperfections
+- Surreal, conceptual imagery with philosophical themes
+- Clean, expressive linework without shading or fills
+- Playful yet thought-provoking composition
+- Use the uploaded image as a reference for composition and subject matter
+- Transform it into a speculative, abstract interpretation
+
+The output should look like it was drawn by hand with a pen, featuring minimalist line art in the style of philosophical illustration comics.`;
+    console.log('[v0] Starting image generation with gemini-2.5-flash-image');
+    
+    const generateResponse = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${process.env.GEMINI_API_KEY}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                {
+                  text: imagePrompt,
+                },
+                {
+                  inline_data: {
+                    mime_type: mimeType,
+                    data: imageData,
+                  },
+                },
+              ],
+            },
+          ],
+        }),
+      }
+    );
+
+    if (!generateResponse.ok) {
+      const errorText = await generateResponse.text();
+      console.error('[v0] Image generation error:', errorText);
+      return NextResponse.json(
+        { error: 'Failed to generate image' },
+        { status: generateResponse.status }
+      );
+    }
+
+    const generateData = await generateResponse.json();
+    console.log('[v0] Generation response:', JSON.stringify(generateData, null, 2));
+    
+    const imagePart = generateData.candidates?.[0]?.content?.parts?.find(
+      (part: any) => part.inlineData || part.inline_data
+    );
+
+    const imageDataGenerated = imagePart?.inlineData?.data || imagePart?.inline_data?.data;
+
+    if (imageDataGenerated) {
+      console.log('[v0] Successfully generated image');
+      return NextResponse.json({ 
+        imageData: imageDataGenerated 
+      });
+    }
+
+    console.error('[v0] No image data found in response');
+    return NextResponse.json(
+      { error: 'No image was generated by the API' },
+      { status: 500 }
+    );
+  } catch (error) {
+    console.error('[v0] Error generating image:', error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}
