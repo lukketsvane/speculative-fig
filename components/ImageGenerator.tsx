@@ -44,7 +44,11 @@ export default function ImageGenerator() {
         }
 
         const data = await response.json();
-        setGeneratedImage(`data:image/png;base64,${data.imageData}`);
+        if (data.imageUrl) {
+          setGeneratedImage(data.imageUrl);
+        } else {
+          setGeneratedImage(`data:image/png;base64,${data.imageData}`);
+        }
       } catch (e) {
         console.error(e);
         setError('Failed to generate the drawing. Please try again.');

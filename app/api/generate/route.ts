@@ -1,6 +1,41 @@
 import { NextResponse } from 'next/server';
 
-const SPECULATIVE_PROMPT = `Create a speculative black and white line drawing based on this concept: {description}. The style should be minimal, conceptual, and thought-provoking. Emphasize abstract forms and ideas inspired by the concept, rather than literal depiction. The output should be a clean line drawing on a white background with high contrast. Artistic, sketch-like, minimalist black and white line art.`;
+const REFERENCE_IMAGES = [
+  'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/speculative-drawing_02-eijlN71qxSPxLFWqByu0lFXX8KuUO6.jpg',
+  'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/speculative-drawing_07-Pbb9R8neSEAw1DDnOEqO2ubNmNywF6.jpg',
+  'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/speculative-drawing_14-w4neAJG3jlW7h6bqR11YC93rUEHVhp.jpg',
+];
+
+const STYLE_GUIDE = `You MUST create artwork in this EXACT style:
+
+VISUAL STYLE (CRITICAL):
+- Pure black continuous lines on white background - NO shading, NO fills, NO gray tones
+- Hand-drawn aesthetic with slightly wobbly, organic lines (not computer-perfect)
+- Minimalist line art using single continuous strokes where possible
+- Surreal, abstracted human figures with distorted proportions and impossible geometries
+- Layered/repeated line motifs creating motion or philosophical depth
+- Clean white background with high contrast black lines
+
+CONCEPTUAL APPROACH:
+- Philosophical commentary on technology, algorithms, time, and human consciousness
+- Transform literal subjects into speculative, metaphorical interpretations
+- Satirical/critical perspective on digital life and modern existence
+- Surreal visual metaphors (e.g., elongated limbs, multiplied forms, merged bodies)
+
+COMPOSITION:
+- Simple, centered compositions with lots of white space
+- Include handwritten lowercase text caption that provides ironic/philosophical commentary
+- Text should be integrated naturally, appearing hand-lettered in a casual style
+- Caption format: brief phrase about technology, time, or speculative futures
+
+FORBIDDEN:
+- NO photorealistic details
+- NO shading or gradients
+- NO fills or solid black areas (except small accents)
+- NO color
+- NO typed/digital fonts
+
+Think: "What would this look like as a New Yorker-style philosophical cartoon about technology and time?"`;
 
 export async function POST(request: Request) {
   try {
@@ -27,7 +62,7 @@ export async function POST(request: Request) {
             {
               parts: [
                 {
-                  text: 'Describe this image in detail, focusing on the key subjects, composition, mood, and visual elements. Be concise but comprehensive.',
+                  text: 'Describe the KEY SUBJECT and MOOD of this image in 2-3 sentences. Focus on what could be transformed into a philosophical metaphor about technology, time, or human existence. Be conceptual, not literal.',
                 },
                 {
                   inline_data: {
@@ -52,7 +87,6 @@ export async function POST(request: Request) {
     }
 
     const analyzeData = await analyzeResponse.json();
-    console.log('[v0] Analysis response:', JSON.stringify(analyzeData, null, 2));
     
     const description = analyzeData.candidates?.[0]?.content?.parts?.[0]?.text;
 
@@ -64,19 +98,26 @@ export async function POST(request: Request) {
       );
     }
 
-    console.log('[v0] Image description:', description);
-    const imagePrompt = `Create a minimalist black and white line drawing based on this concept: ${description}
+    console.log('[v0] Image concept:', description);
 
-The style must strictly adhere to these characteristics:
-- Simple continuous or near-continuous black lines on white background
-- Sketch-like, hand-drawn quality with slight imperfections
-- Surreal, conceptual imagery with philosophical themes
-- Clean, expressive linework without shading or fills
-- Playful yet thought-provoking composition
-- Use the uploaded image as a reference for composition and subject matter
-- Transform it into a speculative, abstract interpretation
+    const imagePrompt = `${STYLE_GUIDE}
 
-The output should look like it was drawn by hand with a pen, featuring minimalist line art in the style of philosophical illustration comics.`;
+REFERENCE STYLE: Study these exact reference images to match the style perfectly:
+${REFERENCE_IMAGES.map((url, i) => `Reference ${i + 1}: ${url}`).join('\n')}
+
+SOURCE CONCEPT: ${description}
+
+YOUR TASK:
+Transform the above concept into a speculative line drawing that looks EXACTLY like the reference images. The uploaded image is your composition reference - use its subject and mood, but render it as a philosophical, surreal line drawing with a critical commentary caption about technology or time.
+
+Example caption styles:
+- "problems getting used to living in a speculative time"
+- "the preemptive personality is one step ahead"
+- "we are now post-everything (in the age of wire)"
+- "there is no outside"
+
+Create a thought-provoking visual metaphor with handwritten text.`;
+
     console.log('[v0] Starting image generation with gemini-2.5-flash-image');
     
     const generateResponse = await fetch(
@@ -116,7 +157,6 @@ The output should look like it was drawn by hand with a pen, featuring minimalis
     }
 
     const generateData = await generateResponse.json();
-    console.log('[v0] Generation response:', JSON.stringify(generateData, null, 2));
     
     const imagePart = generateData.candidates?.[0]?.content?.parts?.find(
       (part: any) => part.inlineData || part.inline_data
@@ -126,8 +166,38 @@ The output should look like it was drawn by hand with a pen, featuring minimalis
 
     if (imageDataGenerated) {
       console.log('[v0] Successfully generated image');
+      
+      if (!process.env.IMGBB_API_KEY) {
+        console.error('[v0] IMGBB_API_KEY not set, returning base64');
+        return NextResponse.json({ 
+          imageData: imageDataGenerated 
+        });
+      }
+
+      console.log('[v0] Uploading image to ImgBB');
+      const formData = new URLSearchParams();
+      formData.append('key', process.env.IMGBB_API_KEY);
+      formData.append('image', imageDataGenerated);
+
+      const imgbbResponse = await fetch('https://api.imgbb.com/1/upload', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!imgbbResponse.ok) {
+        const errorText = await imgbbResponse.text();
+        console.error('[v0] ImgBB upload error:', errorText);
+        return NextResponse.json({ 
+          imageData: imageDataGenerated 
+        });
+      }
+
+      const imgbbData = await imgbbResponse.json();
+      console.log('[v0] ImgBB upload success:', imgbbData.data?.url);
+
       return NextResponse.json({ 
-        imageData: imageDataGenerated 
+        imageUrl: imgbbData.data?.display_url || imgbbData.data?.url,
+        imageData: imageDataGenerated
       });
     }
 
